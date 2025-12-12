@@ -1,114 +1,297 @@
 package BankManagement;
 
-import java.util.ArrayList;
+import java.sql.*;
 import java.util.Scanner;
 
-class BankAccount {
-    private String accountNumber;
-    private String holderName;
-    private double balance;
-    private ArrayList<String> transactions; // To store last 5 transactions
-
-    // Constructor
-    public BankAccount(String accountNumber, String holderName, double balance) {
-        this.accountNumber = accountNumber;
-        this.holderName = holderName;
-        this.balance = balance;
-        this.transactions = new ArrayList<>();
-    }
-
-    // Method to check balance
-    public void checkBalance() {
-        System.out.println("Current balance: $" + balance);
-        recordTransaction("Checked balance");
-    }
-
-    // Method to deposit money
-    public void deposit(double amount) {
-        if (amount > 0) {
-            balance += amount;
-            System.out.println("$" + amount + " deposited successfully.");
-            recordTransaction("Deposited: $" + amount);
-        } else {
-            System.out.println("Invalid amount. Deposit must be greater than zero.");
-        }
-    }
-
-    // Method to withdraw money
-    public void withdraw(double amount) {
-        if (amount > 0 && amount <= balance) {
-            balance -= amount;
-            System.out.println("$" + amount + " withdrawn successfully.");
-            recordTransaction("Withdrew: $" + amount);
-        } else {
-            System.out.println("Invalid amount or insufficient balance.");
-        }
-    }
-
-    // Method to view mini-statement (last 5 transactions)
-    public void viewMiniStatement() {
-        System.out.println("Last 5 transactions:");
-        for (String transaction : transactions) {
-            System.out.println(transaction);
-        }
-    }
-
-    // Helper method to record transactions in the last 5 transactions
-    private void recordTransaction(String transaction) {
-        if (transactions.size() == 5) {
-            transactions.remove(0); // Remove the oldest transaction if there are already 5
-        }
-        transactions.add(transaction);
-    }
-}
-
 public class ATMSimulation {
+
+    static final String URL = "jdbc:mysql://localhost:3306/ccsha";
+    static final String USER = "root";
+    static final String PASS = "";
+
+    static Scanner sc = new Scanner(System.in);
+
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
 
-        // Create a sample account
-        BankAccount account = new BankAccount("12345", "John Doe", 1000.00);
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (Exception e) {
+            System.out.println("Driver not found!");
+        }
 
-        int option;
-        do {
-            // Display menu options
-            System.out.println("\nATM Banking System");
-            System.out.println("1. Check Balance");
-            System.out.println("2. Deposit Money");
-            System.out.println("3. Withdraw Money");
-            System.out.println("4. View Mini-Statement");
-            System.out.println("5. Exit");
-            System.out.print("Select an option: ");
-            option = scanner.nextInt();
+        while (true) {
+            System.out.println("\n===== ATM BANK MANAGEMENT =====");
+            System.out.println("1. New Account");
+            System.out.println("2. Edit Account");
+            System.out.println("3. Deposit");
+            System.out.println("4. Withdraw");
+            System.out.println("5. Check Balance");
+            System.out.println("6. Mini-Statement");
+            System.out.println("7. Exit");
+            System.out.print("Enter choice: ");
+            int ch = sc.nextInt();
 
-            // Perform corresponding operation based on user input
-            switch (option) {
-                case 1:
-                    account.checkBalance();
-                    break;
-                case 2:
-                    System.out.print("Enter deposit amount: ");
-                    double depositAmount = scanner.nextDouble();
-                    account.deposit(depositAmount);
-                    break;
-                case 3:
-                    System.out.print("Enter withdrawal amount: ");
-                    double withdrawalAmount = scanner.nextDouble();
-                    account.withdraw(withdrawalAmount);
-                    break;
-                case 4:
-                    account.viewMiniStatement();
-                    break;
-                case 5:
-                    System.out.println("Thank you for using the ATM. Goodbye!");
-                    break;
-                default:
-                    System.out.println("Invalid option. Please try again.");
+            switch (ch) {
+                case 1 -> newAccount();
+                case 2 -> editAccount();
+                case 3 -> deposit();
+                case 4 -> withdraw();
+                case 5 -> checkBalance();
+                case 6 -> miniStatement();
+                case 7 -> System.exit(0);
+                default -> System.out.println("Invalid choice!");
             }
-        } while (option != 5);
-
-        scanner.close();
+        }
     }
+
+    // ---------------- NEW ACCOUNT ----------------
+    static void newAccount() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement check = con.prepareStatement(
+                    "SELECT * FROM accounts WHERE account_number=?");
+            check.setString(1, acc);
+            ResultSet rs = check.executeQuery();
+
+            if (rs.next()) {
+                System.out.println("Account already exists!");
+                return;
+            }
+
+            sc.nextLine();
+            System.out.print("Enter Holder Name: ");
+            String name = sc.nextLine();
+
+            System.out.print("Enter Initial Balance: ");
+            double bal = sc.nextDouble();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO accounts(account_number, holder_name, balance) VALUES(?,?,?)");
+
+            ps.setString(1, acc);
+            ps.setString(2, name);
+            ps.setDouble(3, bal);
+            ps.executeUpdate();
+
+            System.out.println("Account Created Successfully!");
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- EDIT DETAILS ----------------
+    static void editAccount() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "SELECT * FROM accounts WHERE account_number=?");
+            ps.setString(1, acc);
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Account not found!");
+                return;
+            }
+
+            System.out.println("\nOld Name: " + rs.getString("holder_name"));
+
+            sc.nextLine();
+            System.out.print("Enter New Name: ");
+            String name = sc.nextLine();
+
+            PreparedStatement update = con.prepareStatement(
+                    "UPDATE accounts SET holder_name=? WHERE account_number=?");
+
+            update.setString(1, name);
+            update.setString(2, acc);
+            update.executeUpdate();
+
+            System.out.println("Account Updated!");
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- DEPOSIT ----------------
+    static void deposit() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "SELECT * FROM accounts WHERE account_number=?");
+            ps.setString(1, acc);
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Account not found!");
+                return;
+            }
+
+            System.out.print("Enter Deposit Amount: ");
+            double amt = sc.nextDouble();
+
+            double newBal = rs.getDouble("balance") + amt;
+
+            PreparedStatement update = con.prepareStatement(
+                    "UPDATE accounts SET balance=? WHERE account_number=?");
+
+            update.setDouble(1, newBal);
+            update.setString(2, acc);
+            update.executeUpdate();
+
+            saveTransaction(con, acc, "Deposited: $" + amt);
+
+            System.out.println("Deposit Successful!");
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- WITHDRAW ----------------
+    static void withdraw() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "SELECT * FROM accounts WHERE account_number=?");
+            ps.setString(1, acc);
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Account not found!");
+                return;
+            }
+
+            System.out.print("Enter Withdrawal Amount: ");
+            double amt = sc.nextDouble();
+
+            double bal = rs.getDouble("balance");
+
+            if (amt > bal) {
+                System.out.println("Insufficient Balance!");
+                return;
+            }
+
+            double newBal = bal - amt;
+
+            PreparedStatement update = con.prepareStatement(
+                    "UPDATE accounts SET balance=? WHERE account_number=?");
+
+            update.setDouble(1, newBal);
+            update.setString(2, acc);
+            update.executeUpdate();
+
+            saveTransaction(con, acc, "Withdrawn: $" + amt);
+
+            System.out.println("Withdrawal Successful!");
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- CHECK BALANCE ----------------
+    static void checkBalance() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "SELECT balance FROM accounts WHERE account_number=?");
+            ps.setString(1, acc);
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                System.out.println("Current Balance: $" + rs.getDouble("balance"));
+            } else {
+                System.out.println("Account not found!");
+            }
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- MINI STATEMENT ----------------
+    static void miniStatement() {
+        try (Connection con = DriverManager.getConnection(URL, USER, PASS)) {
+
+            System.out.print("Enter Account Number: ");
+            String acc = sc.next();
+
+            PreparedStatement ps = con.prepareStatement(
+                    "SELECT t1,t2,t3,t4,t5 FROM accounts WHERE account_number=?");
+            ps.setString(1, acc);
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                System.out.println("Account not found!");
+                return;
+            }
+
+            System.out.println("\n===== LAST 5 TRANSACTIONS =====");
+            for (int i = 1; i <= 5; i++) {
+                String t = rs.getString("t" + i);
+                if (t != null)
+                    System.out.println(t);
+            }
+
+        } catch (SQLException e) {
+            printSQLError(e);
+        }
+    }
+
+    // ---------------- SAVE TRANSACTION ----------------
+    static void saveTransaction(Connection con, String acc, String text) throws SQLException {
+
+        PreparedStatement ps = con.prepareStatement(
+                "SELECT t1,t2,t3,t4,t5 FROM accounts WHERE account_number=?");
+        ps.setString(1, acc);
+        ResultSet rs = ps.executeQuery();
+
+        if (!rs.next()) return;
+
+        String[] t = new String[5];
+        for (int i = 0; i < 5; i++)
+            t[i] = rs.getString("t" + (i+1));
+
+        // shift old transactions
+        for (int i = 4; i > 0; i--)
+            t[i] = t[i-1];
+        t[0] = text;
+
+        PreparedStatement upd = con.prepareStatement(
+                "UPDATE accounts SET t1=?, t2=?, t3=?, t4=?, t5=? WHERE account_number=?");
+
+        for (int i = 0; i < 5; i++)
+            upd.setString(i+1, t[i]);
+
+        upd.setString(6, acc);
+        upd.executeUpdate();
+    }
+
+    // ---------------- SQL ERROR LOG ----------------
+    static void printSQLError(SQLException e) {
+        System.out.println("\n--- SQL ERROR ---");
+        System.out.println("Message: " + e.getMessage());
+        System.out.println("State: " + e.getSQLState());
+        System.out.println("Code: " + e.getErrorCode());
+        e.printStackTrace();
+        System.out.println("------------------\n");
+    }
+
 }
-
-
